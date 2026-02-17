@@ -9,24 +9,13 @@ pub struct LoadedConfig {
     pub config: Config,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub general: GeneralConfig,
     pub scan: ScanConfig,
     pub env: EnvConfig,
     pub providers: ProvidersConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            scan: ScanConfig::default(),
-            env: EnvConfig::default(),
-            providers: ProvidersConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,18 +36,13 @@ impl Default for GeneralConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum FailOn {
+    #[default]
     Warning,
     Error,
     None,
-}
-
-impl Default for FailOn {
-    fn default() -> Self {
-        Self::Warning
-    }
 }
 
 impl fmt::Display for FailOn {
@@ -124,22 +108,12 @@ impl Default for EnvConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProvidersConfig {
     pub supabase: SupabaseConfig,
     pub vercel: VercelConfig,
     pub stripe: StripeConfig,
-}
-
-impl Default for ProvidersConfig {
-    fn default() -> Self {
-        Self {
-            supabase: SupabaseConfig::default(),
-            vercel: VercelConfig::default(),
-            stripe: StripeConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

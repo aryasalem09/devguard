@@ -2,6 +2,20 @@
 name = "devguard"
 version = "0.1.0"
 edition = "2024"
+description = "CLI repository hygiene checks for secrets, env setup, git health, and provider best practices."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/aryasalem09/devguard"
+readme = "README.md"
+keywords = ["cli", "security", "devops", "secrets", "lint"]
+categories = ["command-line-utilities", "development-tools"]
+include = [
+    "src/**",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "devguard.example.toml",
+]
 
 [dependencies]
 anyhow = "1.0"

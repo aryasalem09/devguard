@@ -293,16 +293,14 @@ mod tests {
     fn detects_stripe_keys() {
         let live = format!(
             "STRIPE_SECRET_KEY={}{}",
-            "sk_live_",
-            "abcdefghijklmnopqrstuvwxyz123456"
+            "sk_live_", "abcdefghijklmnopqrstuvwxyz123456"
         );
         let hits = scan_text_for_hits(&live);
         assert!(hits.iter().any(|(kind, _)| *kind == SecretKind::StripeLive));
 
         let test = format!(
             "STRIPE_SECRET_KEY={}{}",
-            "sk_test_",
-            "abcdefghijklmnopqrstuvwxyz123456"
+            "sk_test_", "abcdefghijklmnopqrstuvwxyz123456"
         );
         let hits = scan_text_for_hits(&test);
         assert!(hits.iter().any(|(kind, _)| *kind == SecretKind::StripeTest));

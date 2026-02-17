@@ -5,6 +5,7 @@ use crate::providers::Provider;
 use crate::utils::{fs as fs_utils, git as git_utils};
 use serde_json::Value;
 use std::fs;
+use std::path::Path;
 
 pub struct VercelProvider;
 
@@ -27,22 +28,18 @@ impl Provider for VercelProvider {
         let mut issues = Vec::new();
 
         let vercel_json = ctx.repo_root.join("vercel.json");
-        if vercel_json.is_file() {
-            if let Ok(raw) = fs::read_to_string(&vercel_json) {
-                if let Ok(value) = serde_json::from_str::<Value>(&raw) {
-                    if contains_key_recursive(&value, "env") {
-                        issues.push(
-                            Issue::new(
-                                Severity::Info,
-                                Category::Vercel,
-                                "vercel.json contains env keys",
-                                "prefer Vercel dashboard environment variables instead of committed env fields",
-                            )
-                            .with_file(fs_utils::relative_path(&ctx.repo_root, &vercel_json)),
-                        );
-                    }
-                }
-            }
+        if let Some(value) = parse_vercel_json(&vercel_json)
+            && contains_key_recursive(&value, "env")
+        {
+            issues.push(
+                Issue::new(
+                    Severity::Info,
+                    Category::Vercel,
+                    "vercel.json contains env keys",
+                    "prefer Vercel dashboard environment variables instead of committed env fields",
+                )
+                .with_file(fs_utils::relative_path(&ctx.repo_root, &vercel_json)),
+            );
         }
 
         let dot_vercel = ctx.repo_root.join(".vercel");
@@ -91,4 +88,17 @@ fn contains_key_recursive(value: &Value, key: &str) -> bool {
         Value::Array(items) => items.iter().any(|child| contains_key_recursive(child, key)),
         _ => false,
     }
+}
+
+fn parse_vercel_json(path: &Path) -> Option<Value> {
+    if !path.is_file() {
+        return None;
+    }
+
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(_) => return None,
+    };
+
+    serde_json::from_str::<Value>(&raw).ok()
 }
