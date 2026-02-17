@@ -1,0 +1,27 @@
+[general]
+fail_on = "warning"
+min_score = 80
+json = false
+
+[scan]
+exclude = ["node_modules", "target", ".git", "dist", "build", ".next"]
+max_file_size_kb = 512
+
+[env]
+required = ["DATABASE_URL"]
+forbid_commit = [".env", ".env.local", ".env.production", "serviceAccount.json"]
+dotenv_files = [".env", ".env.local", ".env.development", ".env.production"]
+example_files = [".env.example", ".env.template"]
+
+[providers.supabase]
+enabled = true
+require_migrations = true
+migrations_dir = "supabase/migrations"
+forbid_service_role_in_client = true
+
+[providers.vercel]
+enabled = true
+
+[providers.stripe]
+enabled = true
+warn_live_keys = true
