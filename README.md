@@ -1,5 +1,12 @@
 # devguard [![crates.io](https://img.shields.io/crates/v/devguard.svg)](https://crates.io/crates/devguard)
 
+-------------------------------------
+```bash
+cargo install devguard
+devguard --help
+```
+-------------------------------------
+
 `devguard` is a Rust CLI for repo hygiene checks in modern app stacks. It scans for common footguns in:
 
 - secrets
