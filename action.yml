@@ -137,16 +137,16 @@ runs:
         fi
 
         python3 - <<'PY'
-import json
-import os
+        import json
+        import os
 
-with open('.devguard-action-report.json', encoding='utf-8') as fh:
-    data = json.load(fh)
+        with open('.devguard-action-report.json', encoding='utf-8') as fh:
+            data = json.load(fh)
 
-with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
-    out.write(f"score={data['score']}\n")
-    out.write(f"passed={str(data['passed']).lower()}\n")
-PY
+        with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+            out.write(f"score={data['score']}\n")
+            out.write(f"passed={str(data['passed']).lower()}\n")
+        PY
 
         render_status=0
         sarif_status=0
