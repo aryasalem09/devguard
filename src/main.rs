@@ -2,12 +2,16 @@ mod cli;
 mod config;
 mod core;
 mod providers;
+mod report;
+mod score;
 mod utils;
 
 use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Commands, RunArgs};
 use core::RunProfile;
+use report::{RenderOptions, ReportFormat};
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 fn main() {
@@ -26,8 +30,8 @@ fn run() -> Result<i32> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Check(args) => run_profile(args, RunProfile::Full),
-        Commands::Init(args) => {
+        Commands::Check { args } => run_profile(args, RunProfile::Full),
+        Commands::Init { args } => {
             if args.config.is_some() {
                 eprintln!(
                     "warning: --config is ignored by `devguard init`; writing ./devguard.toml"
@@ -40,16 +44,16 @@ fn run() -> Result<i32> {
             Ok(0)
         }
         Commands::Scan { command } => match command {
-            cli::ScanSubcommand::Secrets(args) => run_profile(args, RunProfile::SecretsOnly),
+            cli::ScanSubcommand::Secrets { args } => run_profile(args, RunProfile::SecretsOnly),
         },
         Commands::Env { command } => match command {
-            cli::EnvSubcommand::Validate(args) => run_profile(args, RunProfile::EnvOnly),
+            cli::EnvSubcommand::Validate { args } => run_profile(args, RunProfile::EnvOnly),
         },
         Commands::Git { command } => match command {
-            cli::GitSubcommand::Health(args) => run_profile(args, RunProfile::GitOnly),
+            cli::GitSubcommand::Health { args } => run_profile(args, RunProfile::GitOnly),
         },
         Commands::Supabase { command } => match command {
-            cli::SupabaseSubcommand::Verify(args) => {
+            cli::SupabaseSubcommand::Verify { args } => {
                 run_profile(args.run, RunProfile::SupabaseVerify { force: args.force })
             }
         },
@@ -60,22 +64,51 @@ fn run_profile(args: RunArgs, profile: RunProfile) -> Result<i32> {
     let cwd = std::env::current_dir()?;
     let loaded = config::load_config(args.config.as_deref(), &cwd)?;
     let repo_root = resolve_repo_root(&cwd, &args.path);
-    let report = core::run_checks(&repo_root, &loaded.config, profile)?;
+    let format = determine_format(&args, &loaded.config);
+    let min_score = args.min_score.unwrap_or(loaded.config.general.min_score);
+    let fail_on = args.fail_on.unwrap_or(loaded.config.general.fail_on);
+    let report = core::run_checks(&repo_root, &loaded.config, profile, min_score, fail_on)?;
 
-    let output_json = args.json || loaded.config.general.json;
-    if output_json {
-        let json_report = core::report::JsonReport::from(&report);
-        println!("{}", serde_json::to_string_pretty(&json_report)?);
-    } else {
-        core::report::print_human(&report);
+    if args.github_step_summary {
+        report::write_github_step_summary(&report)?;
     }
 
-    if report.exit.ok { Ok(0) } else { Ok(1) }
+    let render_options = RenderOptions {
+        summary_only: args.summary_only,
+        color: args.output.is_none() && std::io::stdout().is_terminal(),
+        github_step_summary: false,
+    };
+    let rendered = report::render(&report, format, render_options)?;
+
+    if let Some(output_path) = args.output {
+        let output_path = resolve_output_path(&cwd, &output_path);
+        report::write_output(&output_path, &rendered)?;
+    } else {
+        print!("{rendered}");
+    }
+
+    if report.passed { Ok(0) } else { Ok(1) }
+}
+
+fn determine_format(args: &RunArgs, cfg: &config::Config) -> ReportFormat {
+    args.format.unwrap_or(if args.json || cfg.general.json {
+        ReportFormat::Json
+    } else {
+        ReportFormat::Human
+    })
 }
 
 fn resolve_repo_root(cwd: &Path, path: &PathBuf) -> PathBuf {
     if path.is_absolute() {
         path.clone()
+    } else {
+        cwd.join(path)
+    }
+}
+
+fn resolve_output_path(cwd: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
     } else {
         cwd.join(path)
     }

@@ -1,6 +1,5 @@
 use crate::config::Config;
-use crate::core::RepoContext;
-use crate::core::report::{Category, Issue, Severity};
+use crate::core::{Issue, RepoContext, Severity, rules};
 use crate::providers::Provider;
 use crate::utils::fs::{is_likely_binary, relative_path};
 use once_cell::sync::Lazy;
@@ -38,16 +37,16 @@ impl Provider for SupabaseProvider {
             let migrations_dir = ctx.repo_root.join(&cfg.providers.supabase.migrations_dir);
             if !migrations_dir.is_dir() {
                 issues.push(
-                    Issue::new(
+                    Issue::from_rule(
+                        rules::SUPABASE_MIGRATIONS_DIR_MISSING,
                         Severity::Warning,
-                        Category::Supabase,
                         "missing migrations directory",
                         format!(
                             "create {} and commit SQL migration files",
                             cfg.providers.supabase.migrations_dir
                         ),
                     )
-                    .with_detail("this helps keep schema changes reproducible"),
+                    .with_description("this helps keep schema changes reproducible"),
                 );
             } else {
                 let has_sql_file = WalkDir::new(&migrations_dir)
@@ -64,9 +63,9 @@ impl Provider for SupabaseProvider {
 
                 if !has_sql_file {
                     issues.push(
-                        Issue::new(
+                        Issue::from_rule(
+                            rules::SUPABASE_SQL_MIGRATIONS_MISSING,
                             Severity::Warning,
-                            Category::Supabase,
                             "no SQL migration files found",
                             "add at least one .sql migration file",
                         )
@@ -83,13 +82,13 @@ impl Provider for SupabaseProvider {
         for key in ["SUPABASE_URL", "SUPABASE_ANON_KEY"] {
             if cfg.env.required.iter().any(|required| required == key) && !ctx.has_env_key(key) {
                 issues.push(
-                    Issue::new(
+                    Issue::from_rule(
+                        rules::SUPABASE_REQUIRED_ENV_MISSING,
                         Severity::Warning,
-                        Category::Supabase,
                         format!("missing required Supabase env var {}", key),
                         format!("add {} to local env files and CI", key),
                     )
-                    .with_detail(
+                    .with_description(
                         "provider check expected this key because it is listed in env.required",
                     ),
                 );
@@ -142,9 +141,9 @@ fn scan_frontend_for_service_role(ctx: &RepoContext, cfg: &Config) -> Vec<Issue>
                 }
 
                 issues.push(
-                    Issue::new(
-                        Severity::Critical,
-                        Category::Supabase,
+                    Issue::from_rule(
+                        rules::SUPABASE_SERVICE_ROLE_IN_CLIENT,
+                        Severity::Error,
                         "service role reference found in client code",
                         "remove service role access from client bundles and use a secure backend endpoint",
                     )

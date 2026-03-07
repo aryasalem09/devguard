@@ -1,0 +1,52 @@
+name: devguard
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run DevGuard
+        id: devguard
+        uses: ./
+        continue-on-error: true
+        with:
+          format: markdown
+          github-step-summary: true
+          sarif: true
+          sarif-path: devguard.sarif
+
+      - name: Upload SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: devguard.sarif
+
+      - name: Note fork permission limits
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true
+        run: |
+          echo "SARIF upload is skipped for forked pull requests because security-events: write may not be available."
+
+      - name: Show DevGuard outputs
+        if: always()
+        run: |
+          echo "report path: ${{ steps.devguard.outputs['report-path'] }}"
+          echo "score: ${{ steps.devguard.outputs.score }}"
+          echo "passed: ${{ steps.devguard.outputs.passed }}"
+
+      - name: Fail job when DevGuard fails policy
+        if: steps.devguard.outcome == 'failure'
+        run: exit 1

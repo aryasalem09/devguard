@@ -1,3 +1,5 @@
+use crate::config::FailOn;
+use crate::report::ReportFormat;
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -14,8 +16,14 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    Check(RunArgs),
-    Init(InitArgs),
+    Check {
+        #[command(flatten)]
+        args: RunArgs,
+    },
+    Init {
+        #[command(flatten)]
+        args: InitArgs,
+    },
     Scan {
         #[command(subcommand)]
         command: ScanSubcommand,
@@ -40,7 +48,19 @@ pub struct RunArgs {
     pub path: PathBuf,
     #[arg(long)]
     pub config: Option<PathBuf>,
+    #[arg(long, value_enum)]
+    pub format: Option<ReportFormat>,
     #[arg(long)]
+    pub output: Option<PathBuf>,
+    #[arg(long)]
+    pub summary_only: bool,
+    #[arg(long)]
+    pub min_score: Option<u8>,
+    #[arg(long, value_enum)]
+    pub fail_on: Option<FailOn>,
+    #[arg(long)]
+    pub github_step_summary: bool,
+    #[arg(long, hide = true, conflicts_with = "format")]
     pub json: bool,
 }
 
@@ -52,22 +72,34 @@ pub struct InitArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum ScanSubcommand {
-    Secrets(RunArgs),
+    Secrets {
+        #[command(flatten)]
+        args: RunArgs,
+    },
 }
 
 #[derive(Debug, Subcommand)]
 pub enum EnvSubcommand {
-    Validate(RunArgs),
+    Validate {
+        #[command(flatten)]
+        args: RunArgs,
+    },
 }
 
 #[derive(Debug, Subcommand)]
 pub enum GitSubcommand {
-    Health(RunArgs),
+    Health {
+        #[command(flatten)]
+        args: RunArgs,
+    },
 }
 
 #[derive(Debug, Subcommand)]
 pub enum SupabaseSubcommand {
-    Verify(SupabaseVerifyArgs),
+    Verify {
+        #[command(flatten)]
+        args: SupabaseVerifyArgs,
+    },
 }
 
 #[derive(Debug, Args, Clone)]

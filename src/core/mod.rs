@@ -1,10 +1,11 @@
-pub mod report;
+pub mod issue;
 pub mod scanner;
-pub mod score;
 
-use crate::config::Config;
-use crate::core::report::{Category, FinalReport, Issue, Severity};
+pub use issue::{Category, Issue, Severity, rules};
+
+use crate::config::{Config, FailOn};
 use crate::providers;
+use crate::report::{self, FinalReport};
 use crate::utils::{fs as fs_utils, git as git_utils};
 use anyhow::{Context, Result, bail};
 use git2::Repository;
@@ -109,7 +110,13 @@ pub enum RunProfile {
     SupabaseVerify { force: bool },
 }
 
-pub fn run_checks(repo_root: &Path, cfg: &Config, profile: RunProfile) -> Result<FinalReport> {
+pub fn run_checks(
+    repo_root: &Path,
+    cfg: &Config,
+    profile: RunProfile,
+    min_score: u8,
+    fail_on: FailOn,
+) -> Result<FinalReport> {
     let ctx = RepoContext::build(repo_root, cfg)?;
     let mut issues = Vec::new();
 
@@ -135,22 +142,12 @@ pub fn run_checks(repo_root: &Path, cfg: &Config, profile: RunProfile) -> Result
     dedupe_issues(&mut issues);
     sort_issues(&mut issues);
 
-    let score = score::calculate_score(&issues);
-    let label = score::label_for_score(score).to_string();
-    let counts = report::Counts::from_issues(&issues);
-    let exit = report::evaluate_exit(score, &issues, cfg);
-
-    Ok(FinalReport {
-        score,
-        label,
-        counts,
+    Ok(report::build_report(
+        &ctx.repo_root,
         issues,
-        config: report::ConfigSummary {
-            fail_on: cfg.general.fail_on,
-            min_score: cfg.general.min_score,
-        },
-        exit,
-    })
+        min_score,
+        fail_on,
+    ))
 }
 
 fn run_provider_checks(ctx: &RepoContext, cfg: &Config, profile: RunProfile) -> Vec<Issue> {
@@ -169,16 +166,16 @@ fn run_provider_checks(ctx: &RepoContext, cfg: &Config, profile: RunProfile) -> 
                 }
 
                 if !provider.is_enabled(cfg) {
-                    issues.push(Issue::new(
+                    issues.push(Issue::from_rule(
+                        rules::SUPABASE_PROVIDER_DISABLED,
                         Severity::Info,
-                        Category::Supabase,
                         "supabase provider disabled in config",
                         "set [providers.supabase].enabled = true to run supabase checks",
                     ));
                 } else if !provider.detect(ctx) && !force {
-                    issues.push(Issue::new(
+                    issues.push(Issue::from_rule(
+                        rules::SUPABASE_NOT_DETECTED,
                         Severity::Info,
-                        Category::Supabase,
                         "supabase not detected",
                         "no supabase project markers found (use --force to run anyway)",
                     ));
@@ -198,9 +195,9 @@ fn run_env_checks(ctx: &RepoContext, cfg: &Config) -> Vec<Issue> {
 
     for required_key in &cfg.env.required {
         if !ctx.has_env_key(required_key) {
-            issues.push(Issue::new(
+            issues.push(Issue::from_rule(
+                rules::ENV_REQUIRED_VAR_MISSING,
                 Severity::Warning,
-                Category::Env,
                 format!("missing required env var {}", required_key),
                 format!(
                     "add {} to local dotenv files and CI environment settings",
@@ -218,13 +215,13 @@ fn run_env_checks(ctx: &RepoContext, cfg: &Config) -> Vec<Issue> {
         missing_from_examples.sort();
         for key in missing_from_examples {
             issues.push(
-                Issue::new(
+                Issue::from_rule(
+                    rules::ENV_EXAMPLE_MISSING_KEY,
                     Severity::Warning,
-                    Category::Env,
                     format!("env example missing key {}", key),
                     "add this key to .env.example or .env.template",
                 )
-                .with_detail("the key exists in dotenv files but not in example files"),
+                .with_description("the key exists in dotenv files but not in example files"),
             );
         }
 
@@ -233,16 +230,16 @@ fn run_env_checks(ctx: &RepoContext, cfg: &Config) -> Vec<Issue> {
         stale_example_keys.sort();
         for key in stale_example_keys {
             issues.push(
-                Issue::new(
+                Issue::from_rule(
+                    rules::ENV_EXAMPLE_STALE_KEY,
                     Severity::Warning,
-                    Category::Env,
                     format!(
                         "example file contains key {} not found in dotenv files",
                         key
                     ),
                     "either add this key to active dotenv files or remove stale example entries",
                 )
-                .with_detail("keeping example files aligned avoids onboarding and CI drift"),
+                .with_description("keeping example files aligned avoids onboarding and CI drift"),
             );
         }
     }
@@ -255,9 +252,9 @@ fn run_git_checks(ctx: &RepoContext, cfg: &Config) -> Vec<Issue> {
     let mut issues = Vec::new();
 
     let Some(repo) = &ctx.git_repo else {
-        issues.push(Issue::new(
+        issues.push(Issue::from_rule(
+            rules::GIT_NOT_A_REPO,
             Severity::Info,
-            Category::Git,
             "not a git repo",
             "initialize git to enable repository hygiene checks",
         ));
@@ -266,28 +263,28 @@ fn run_git_checks(ctx: &RepoContext, cfg: &Config) -> Vec<Issue> {
 
     match git_utils::is_working_tree_dirty(repo) {
         Ok(true) => issues.push(
-            Issue::new(
+            Issue::from_rule(
+                rules::GIT_DIRTY_TREE,
                 Severity::Info,
-                Category::Git,
                 "working tree has changes",
                 "commit or stash changes before running release checks",
             )
-            .with_detail("modified or untracked files were detected"),
+            .with_description("modified or untracked files were detected"),
         ),
-        Ok(false) => issues.push(Issue::new(
+        Ok(false) => issues.push(Issue::from_rule(
+            rules::GIT_CLEAN_TREE,
             Severity::Pass,
-            Category::Git,
             "working tree is clean",
             "no action needed",
         )),
         Err(err) => issues.push(
-            Issue::new(
+            Issue::from_rule(
+                rules::GIT_STATUS_UNAVAILABLE,
                 Severity::Info,
-                Category::Git,
                 "unable to read git status",
                 "run `git status` manually to inspect repository state",
             )
-            .with_detail(err.to_string()),
+            .with_description(err.to_string()),
         ),
     }
 
@@ -295,29 +292,29 @@ fn run_git_checks(ctx: &RepoContext, cfg: &Config) -> Vec<Issue> {
         Ok(head) if head.is_branch() => {
             let branch = head.shorthand().unwrap_or("unknown");
             issues.push(
-                Issue::new(
+                Issue::from_rule(
+                    rules::GIT_BRANCH_IDENTIFIED,
                     Severity::Pass,
-                    Category::Git,
                     format!("current branch: {}", branch),
                     "no action needed",
                 )
-                .with_detail("head points to a named branch"),
+                .with_description("head points to a named branch"),
             );
         }
-        Ok(_) => issues.push(Issue::new(
+        Ok(_) => issues.push(Issue::from_rule(
+            rules::GIT_DETACHED_HEAD,
             Severity::Warning,
-            Category::Git,
             "detached HEAD state",
             "check out a branch before regular development or release work",
         )),
         Err(err) => issues.push(
-            Issue::new(
+            Issue::from_rule(
+                rules::GIT_HEAD_UNAVAILABLE,
                 Severity::Info,
-                Category::Git,
                 "unable to resolve HEAD",
                 "run `git rev-parse --abbrev-ref HEAD` manually",
             )
-            .with_detail(err.to_string()),
+            .with_description(err.to_string()),
         ),
     }
 
@@ -341,14 +338,14 @@ fn run_git_checks(ctx: &RepoContext, cfg: &Config) -> Vec<Issue> {
         }
 
         issues.push(
-            Issue::new(
+            Issue::from_rule(
+                rules::GIT_LARGE_FILE,
                 Severity::Warning,
-                Category::Git,
                 "large file detected (>5MB)",
                 "consider git-lfs or artifact storage for large files",
             )
             .with_file(fs_utils::relative_path(&ctx.repo_root, entry.path()))
-            .with_detail(format!(
+            .with_description(format!(
                 "size: {:.2} MB",
                 metadata.len() as f64 / (1024.0 * 1024.0)
             )),
@@ -384,9 +381,9 @@ fn check_forbidden_env_files(ctx: &RepoContext, cfg: &Config) -> Vec<Issue> {
         let relative_file = fs_utils::relative_path(&ctx.repo_root, entry.path());
         match ctx.tracked_status(entry.path()) {
             Some(true) => issues.push(
-                Issue::new(
-                    Severity::Critical,
-                    Category::Env,
+                Issue::from_rule(
+                    rules::ENV_FORBIDDEN_FILE_TRACKED,
+                    Severity::Error,
                     "forbidden env file appears tracked",
                     "remove it from git index and add the path to .gitignore",
                 )
@@ -394,14 +391,14 @@ fn check_forbidden_env_files(ctx: &RepoContext, cfg: &Config) -> Vec<Issue> {
             ),
             Some(false) => {}
             None => issues.push(
-                Issue::new(
-                    Severity::Critical,
-                    Category::Env,
+                Issue::from_rule(
+                    rules::ENV_FORBIDDEN_FILE_PRESENT,
+                    Severity::Error,
                     "forbidden env file exists",
                     "remove this file or secure it before sharing the repository",
                 )
                 .with_file(relative_file)
-                .with_detail("git tracking status could not be verified"),
+                .with_description("git tracking status could not be verified"),
             ),
         }
     }
@@ -448,8 +445,8 @@ fn dedupe_issues(issues: &mut Vec<Issue>) {
     let mut seen = HashSet::new();
     issues.retain(|issue| {
         let key = format!(
-            "{:?}|{:?}|{}|{:?}|{:?}",
-            issue.severity, issue.category, issue.title, issue.file, issue.line
+            "{}|{:?}|{:?}|{}|{:?}|{:?}",
+            issue.code, issue.severity, issue.category, issue.title, issue.file, issue.line
         );
         seen.insert(key)
     });
@@ -459,7 +456,7 @@ fn sort_issues(issues: &mut [Issue]) {
     issues.sort_by(|a, b| {
         severity_rank(a.severity)
             .cmp(&severity_rank(b.severity))
-            .then(a.category.to_string().cmp(&b.category.to_string()))
+            .then(a.category.cmp(&b.category))
             .then(a.file.cmp(&b.file))
             .then(a.line.cmp(&b.line))
             .then(a.title.cmp(&b.title))
@@ -468,7 +465,7 @@ fn sort_issues(issues: &mut [Issue]) {
 
 fn severity_rank(severity: Severity) -> u8 {
     match severity {
-        Severity::Critical => 0,
+        Severity::Error => 0,
         Severity::Warning => 1,
         Severity::Info => 2,
         Severity::Pass => 3,

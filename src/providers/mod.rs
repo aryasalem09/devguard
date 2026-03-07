@@ -1,6 +1,5 @@
 use crate::config::Config;
-use crate::core::RepoContext;
-use crate::core::report::Issue;
+use crate::core::{Issue, RepoContext};
 
 pub mod stripe;
 pub mod supabase;

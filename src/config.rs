@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fs;
@@ -36,7 +37,7 @@ impl Default for GeneralConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum FailOn {
     #[default]

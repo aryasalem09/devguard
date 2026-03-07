@@ -1,6 +1,6 @@
 [package]
 name = "devguard"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "CLI repository hygiene checks for secrets, env setup, git health, and provider best practices."
 license = "MIT OR Apache-2.0"

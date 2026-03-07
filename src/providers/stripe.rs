@@ -1,6 +1,5 @@
 use crate::config::Config;
-use crate::core::RepoContext;
-use crate::core::report::{Category, Issue, Severity};
+use crate::core::{Issue, RepoContext, Severity, rules};
 use crate::providers::Provider;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -38,9 +37,9 @@ impl Provider for StripeProvider {
                 found_live.insert(variable.file.clone());
                 if cfg.providers.stripe.warn_live_keys {
                     issues.push(
-                        Issue::new(
-                            Severity::Critical,
-                            Category::Stripe,
+                        Issue::from_rule(
+                            rules::STRIPE_LIVE_KEY_IN_DOTENV,
+                            Severity::Error,
                             "live Stripe key found in dotenv file",
                             "move live keys to deployment secrets and rotate exposed values",
                         )
@@ -53,9 +52,9 @@ impl Provider for StripeProvider {
             if STRIPE_TEST_RE.is_match(&variable.value) {
                 found_test.insert(variable.file.clone());
                 issues.push(
-                    Issue::new(
+                    Issue::from_rule(
+                        rules::STRIPE_TEST_KEY_IN_DOTENV,
                         Severity::Warning,
-                        Category::Stripe,
                         "test Stripe key found in dotenv file",
                         "keep test keys in local-only env files and out of source control",
                     )
@@ -67,13 +66,13 @@ impl Provider for StripeProvider {
 
         if !found_live.is_empty() && !found_test.is_empty() {
             issues.push(
-                Issue::new(
+                Issue::from_rule(
+                    rules::STRIPE_MIXED_MODES,
                     Severity::Warning,
-                    Category::Stripe,
                     "mixed Stripe modes detected",
                     "separate test and live credentials by environment",
                 )
-                .with_detail("both sk_live_* and sk_test_* were found across dotenv files"),
+                .with_description("both sk_live_* and sk_test_* were found across dotenv files"),
             );
         }
 

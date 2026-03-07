@@ -1,6 +1,5 @@
 use crate::config::Config;
-use crate::core::RepoContext;
-use crate::core::report::{Category, Issue, Severity};
+use crate::core::{Issue, RepoContext, Severity, rules};
 use crate::utils::fs::{is_likely_binary, relative_path};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -184,47 +183,47 @@ fn build_issue_for_hit(
     match kind {
         SecretKind::StripeLive => {
             let severity = if cfg.providers.stripe.enabled && cfg.providers.stripe.warn_live_keys {
-                Severity::Critical
+                Severity::Error
             } else {
                 Severity::Warning
             };
 
-            Issue::new(
+            Issue::from_rule(
+                rules::SECRET_STRIPE_LIVE_PATTERN,
                 severity,
-                Category::Secrets,
                 "Stripe live key pattern detected",
                 "rotate the key and move it to a secret manager or deployment env",
             )
             .with_file(relative_file.to_string())
             .with_line(line)
         }
-        SecretKind::StripeTest => Issue::new(
+        SecretKind::StripeTest => Issue::from_rule(
+            rules::SECRET_STRIPE_TEST_PATTERN,
             Severity::Warning,
-            Category::Secrets,
             "Stripe test key pattern detected",
             "keep test keys in local env files and out of tracked files",
         )
         .with_file(relative_file.to_string())
         .with_line(line),
-        SecretKind::VercelToken => Issue::new(
+        SecretKind::VercelToken => Issue::from_rule(
+            rules::SECRET_VERCEL_TOKEN,
             Severity::Warning,
-            Category::Secrets,
             "Vercel token-like value detected",
             "prefer Vercel dashboard env configuration instead of committed tokens",
         )
         .with_file(relative_file.to_string())
         .with_line(line),
-        SecretKind::AwsAccessKey => Issue::new(
-            Severity::Critical,
-            Category::Secrets,
+        SecretKind::AwsAccessKey => Issue::from_rule(
+            rules::SECRET_AWS_ACCESS_KEY,
+            Severity::Error,
             "AWS access key pattern detected",
             "revoke and rotate the key, then remove it from git history",
         )
         .with_file(relative_file.to_string())
         .with_line(line),
-        SecretKind::PrivateKeyBlock => Issue::new(
-            Severity::Critical,
-            Category::Secrets,
+        SecretKind::PrivateKeyBlock => Issue::from_rule(
+            rules::SECRET_PRIVATE_KEY,
+            Severity::Error,
             "Private key block detected",
             "remove private key material from source and rotate credentials",
         )
@@ -236,13 +235,13 @@ fn build_issue_for_hit(
                 || lowered.contains("supabase_service_role_key")
                 || lowered.contains("supabase_service_role");
 
-            Issue::new(
+            Issue::from_rule(
+                rules::SECRET_SUPABASE_JWT,
                 if has_service_role_marker {
-                    Severity::Critical
+                    Severity::Error
                 } else {
                     Severity::Warning
                 },
-                Category::Secrets,
                 "Supabase JWT-like key detected",
                 "store Supabase JWT secrets in server-side env only",
             )

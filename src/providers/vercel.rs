@@ -1,6 +1,5 @@
 use crate::config::Config;
-use crate::core::RepoContext;
-use crate::core::report::{Category, Issue, Severity};
+use crate::core::{Issue, RepoContext, Severity, rules};
 use crate::providers::Provider;
 use crate::utils::{fs as fs_utils, git as git_utils};
 use serde_json::Value;
@@ -32,9 +31,9 @@ impl Provider for VercelProvider {
             && contains_key_recursive(&value, "env")
         {
             issues.push(
-                Issue::new(
+                Issue::from_rule(
+                    rules::VERCEL_JSON_ENV,
                     Severity::Info,
-                    Category::Vercel,
                     "vercel.json contains env keys",
                     "prefer Vercel dashboard environment variables instead of committed env fields",
                 )
@@ -52,9 +51,9 @@ impl Provider for VercelProvider {
 
             match tracked {
                 Some(true) => issues.push(
-                    Issue::new(
+                    Issue::from_rule(
+                        rules::VERCEL_DIR_TRACKED,
                         Severity::Warning,
-                        Category::Vercel,
                         ".vercel directory appears tracked",
                         "remove .vercel from git and add it to .gitignore",
                     )
@@ -62,9 +61,9 @@ impl Provider for VercelProvider {
                 ),
                 Some(false) => {}
                 None => issues.push(
-                    Issue::new(
+                    Issue::from_rule(
+                        rules::VERCEL_DIR_PRESENT,
                         Severity::Info,
-                        Category::Vercel,
                         ".vercel directory exists locally",
                         "confirm .vercel is gitignored to avoid leaking local metadata",
                     )
